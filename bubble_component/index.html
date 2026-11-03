@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg, linear-gradient(180deg, #e3f2fd 0%, #bbdefb 100%));
+    padding: 14px;
+    min-height: 100vh;
+    overflow: hidden;
+    transition: background 0.6s;
+  }
+  .header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 12px; padding: 0 6px;
+    color: var(--text, #0d47a1);
+  }
+  .stat { font-size: 18px; font-weight: 600; }
+  .stat span { color: var(--accent, #1976d2); }
+  .streak-big {
+    background: linear-gradient(90deg, #ff9800, #ff5722);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text; font-size: 24px;
+  }
+  .combo-badge {
+    position: fixed; top: 12px; right: 12px;
+    background: linear-gradient(135deg, #ff5722, #e91e63);
+    color: white; font-weight: 800; font-size: 20px;
+    padding: 6px 16px; border-radius: 24px;
+    box-shadow: 0 4px 12px rgba(233,30,99,0.4);
+    opacity: 0; transform: scale(0.5);
+    transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+    pointer-events: none;
+  }
+  .combo-badge.active { opacity: 1; transform: scale(1); }
+  .combo-badge.pulse { animation: comboPulse 0.3s ease-out; }
+  @keyframes comboPulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.25); }
+    100% { transform: scale(1); }
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(var(--cols, 10), 1fr);
+    gap: 3px;
+    background: var(--grid-bg, #90caf9);
+    padding: 8px;
+    border-radius: 12px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+    transition: background 0.6s;
+  }
+  .cell {
+    aspect-ratio: 1/1;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; border: none; background: transparent; padding: 0;
+    position: relative;
+  }
+  .bubble-svg {
+    width: 100%; height: 100%;
+    transition: transform 0.12s ease-out;
+    filter: drop-shadow(0 1px 2px rgba(0,0,0,0.15));
+    position: absolute; top: 0; left: 0;
+  }
+  .cell:hover:not(.popped) .bubble-svg { transform: scale(1.1); }
+  .cell.popping .bubble-svg { animation: popAnim 0.32s ease-out forwards; }
+  @keyframes popAnim {
+    0%   { transform: scale(1) rotate(0deg); }
+    40%  { transform: scale(1.5) rotate(8deg); opacity: 0.9; }
+    100% { transform: scale(0) rotate(-15deg); opacity: 0; }
+  }
+  .cell.popped { cursor: default; opacity: 0.28; }
+  .cell.popped .bubble-svg {
+    transform: scale(0.55);
+    filter: grayscale(1) drop-shadow(0 1px 1px rgba(0,0,0,0.1));
+  }
+  .cell.popped:hover .bubble-svg { transform: scale(0.55); }
+  .power-glow {
+    position: absolute; inset: 0;
+    border-radius: 50%;
+    animation: powerGlow 1.2s ease-in-out infinite alternate;
+    pointer-events: none;
+  }
+  @keyframes powerGlow {
+    from { box-shadow: 0 0 8px 2px var(--glow, gold); }
+    to   { box-shadow: 0 0 22px 6px var(--glow, gold); }
+  }
+  .finish-banner {
+    margin-top: 14px; padding: 18px; border-radius: 12px;
+    background: linear-gradient(90deg, #66bb6a, #43a047);
+    color: white; text-align: center; font-weight: 700; font-size: 20px;
+    animation: slideIn 0.45s ease-out;
+  }
+  @keyframes slideIn {
+    from { transform: translateY(-20px); opacity: 0; }
+    to   { transform: translateY(0); opacity: 1; }
+  }
+  .btn {
+    display: block; margin: 14px auto 0;
+    padding: 12px 28px; font-size: 16px; font-weight: 600;
+    border: none; border-radius: 10px; cursor: pointer;
+    background: var(--accent, #1976d2); color: white;
+    box-shadow: 0 3px 10px rgba(0,0,0,0.25);
+    transition: transform 0.1s;
+  }
+  .btn:hover { transform: translateY(-2px); }
+  .btn:active { transform: translateY(0); }
+  .streak-fire {
+    display: inline-block;
+    animation: firePulse 0.5s ease-in-out infinite alternate;
+  }
+  @keyframes firePulse {
+    from { transform: scale(1); }
+    to   { transform: scale(1.18); }
+  }
+  .float-score {
+    position: absolute; font-weight: 800; font-size: 20px;
+    color: #ff5722; pointer-events: none;
+    animation: floatUp 0.9s ease-out forwards;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.25);
+    z-index: 9999;
+  }
+  @keyframes floatUp {
+    0%   { opacity: 0; transform: translateY(0) scale(0.7); }
+    20%  { opacity: 1; transform: translateY(-6px) scale(1.1); }
+    100% { opacity: 0; transform: translateY(-55px) scale(1); }
+  }
+  .sparkle {
+    position: absolute; font-size: 14px;
+    pointer-events: none; z-index: 9998;
+    animation: sparkleOut 0.7s ease-out forwards;
+  }
+  @keyframes sparkleOut {
+    0%   { opacity: 1; transform: translate(0,0) scale(1); }
+    100% { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(0); }
+  }
+</style>
+</head>
+<body>
+  <div class="header">
+    <div class="stat">Total: <span id="total">0</span></div>
+    <div class="stat streak-big">
+      <span id="streak-icon">🔥</span> <span id="streak">0</span>
+    </div>
+    <div class="stat">Best: <span id="best">0</span></div>
+  </div>
+  <div class="grid" id="grid"></div>
+  <div id="finish-container"></div>
+  <div class="combo-badge" id="comboBadge">x1</div>
+
+  <audio id="popSound" preload="auto"></audio>
+  <audio id="streakSound" preload="auto"></audio>
+  <audio id="finishSound" preload="auto"></audio>
+  <audio id="powerSound" preload="auto"></audio>
+
+<script>
+// ============================================================
+// STATE
+// ============================================================
+let state = [];
+let streak = 0;
+let sessionPops = 0;
+let totalPops = 0;
+let bestStreak = 0;
+let finished = false;
+let combo = 1;
+let comboCount = 0;
+let comboTimeout = null;
+let cells = [];
+let theme = "ocean";
+let powerUps = {};   // idx -> "gold" | "rainbow"
+let floats = [];     // active float animations
+let floatOffset = { x: {}, y: {} };  // per-cell physics offsets
+
+const THEMES = {
+  ocean: {
+    bg: "linear-gradient(180deg,#e3f2fd 0%,#bbdefb 100%)",
+    gridBg: "#90caf9", text: "#0d47a1", accent: "#1976d2",
+    hueBase: 190, hueRange: 40,
+  },
+  pastel: {
+    bg: "linear-gradient(180deg,#fce4ec 0%,#f8bbd0 100%)",
+    gridBg: "#f48fb1", text: "#880e4f", accent: "#c2185b",
+    hueBase: 300, hueRange: 60,
+  },
+  sunset: {
+    bg: "linear-gradient(180deg,#fff3e0 0%,#ffcc80 100%)",
+    gridBg: "#ffb74d", text: "#e65100", accent: "#f57c00",
+    hueBase: 20, hueRange: 40,
+  },
+  holiday: {
+    bg: "linear-gradient(180deg,#e8f5e9 0%,#c8e6c9 100%)",
+    gridBg: "#81c784", text: "#1b5e20", accent: "#388e3c",
+    hueBase: 120, hueRange: 60,
+  },
+};
+
+// ============================================================
+// SETTINGS HANDLER (Streamlit → iframe)
+// ============================================================
+function onRender(event) {
+  const data = event.data || {};
+  const args = data.args || {};
+
+  if (args.rows) {
+    document.documentElement.style.setProperty("--cols", args.cols || 10);
+  }
+  if (args.state) state = args.state;
+  if (args.best_streak !== undefined) bestStreak = args.best_streak;
+  if (args.total_pops !== undefined) totalPops = args.total_pops;
+  if (args.theme && THEMES[args.theme]) {
+    theme = args.theme;
+    applyTheme();
+  }
+  if (args.power_ups) powerUps = args.power_ups;
+
+  renderGrid();
+  updateHUD();
+}
+
+function applyTheme() {
+  const t = THEMES[theme];
+  document.body.style.setProperty("--bg", t.bg);
+  document.body.style.setProperty("--grid-bg", t.gridBg);
+  document.body.style.setProperty("--text", t.text);
+  document.body.style.setProperty("--accent", t.accent);
+}
+
+// ============================================================
+// GRID RENDERING
+// ============================================================
+function makeBubbleSVG(idx, isGold, isRainbow) {
+  const t = THEMES[theme];
+  const seed = (idx * 9301 + 49297) % 233280;
+  const rnd = seed / 233280;
+  const hue = t.hueBase + rnd * t.hueRange;
+  const sat = 60 + rnd * 25;
+  const light = 65 + rnd * 15;
+  const color = `hsl(${hue},${sat}%,${light}%)`;
+  const rim = `hsl(${hue},${sat}%,${light - 25}%)`;
+  const hx = 12 + rnd * 6;
+  const hy = 12 + rnd * 6;
+
+  if (isRainbow) {
+    return `
+    <svg viewBox="0 0 40 40" class="bubble-svg">
+      <defs>
+        <linearGradient id="rb${idx}" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#ff1744"/>
+          <stop offset="25%" stop-color="#ffea00"/>
+          <stop offset="50%" stop-color="#00e676"/>
+          <stop offset="75%" stop-color="#00b0ff"/>
+          <stop offset="100%" stop-color="#d500f9"/>
+        </linearGradient>
+        <radialGradient id="rbshine${idx}" cx="35%" cy="30%" r="70%">
+          <stop offset="0%" stop-color="rgba(255,255,255,0.95)"/>
+          <stop offset="60%" stop-color="rgba(255,255,255,0.15)"/>
+          <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+        </radialGradient>
+      </defs>
+      <circle cx="20" cy="20" r="17" fill="url(#rb${idx})" stroke="#fff" stroke-width="1.8"/>
+      <circle cx="20" cy="20" r="17" fill="url(#rbshine${idx})"/>
+      <ellipse cx="${hx}" cy="${hy}" rx="4" ry="5" fill="white" opacity="0.9"/>
+    </svg>`;
+  }
+
+  if (isGold) {
+    return `
+    <svg viewBox="0 0 40 40" class="bubble-svg">
+      <defs>
+        <radialGradient id="gd${idx}" cx="35%" cy="30%" r="70%">
+          <stop offset="0%" stop-color="#fff9c4"/>
+          <stop offset="45%" stop-color="#ffd54f"/>
+          <stop offset="100%" stop-color="#ff8f00"/>
+        </radialGradient>
+      </defs>
+      <circle cx="20" cy="20" r="17" fill="url(#gd${idx})"
+              stroke="#bf6c00" stroke-width="1.4"/>
+      <ellipse cx="${hx}" cy="${hy}" rx="4" ry="5" fill="white" opacity="0.9"/>
+      <text x="20" y="26" text-anchor="middle" font-size="14" font-weight="900"
+            fill="#bf6c00" opacity="0.7">★</text>
+    </svg>`;
+  }
+
+  return `
+  <svg viewBox="0 0 40 40" class="bubble-svg">
+    <defs>
+      <radialGradient id="bg${idx}" cx="35%" cy="30%" r="70%">
+        <stop offset="0%" stop-color="rgba(255,255,255,0.92)"/>
+        <stop offset="40%" stop-color="rgba(220,240,255,0.6)"/>
+        <stop offset="100%" stop-color="rgba(120,180,230,0.75)"/>
+      </radialGradient>
+    </defs>
+    <circle cx="20" cy="20" r="17" fill="url(#bg${idx})"
+            stroke="${rim}" stroke-width="1.2"/>
+    <ellipse cx="${hx}" cy="${hy}" rx="4" ry="5" fill="white" opacity="0.85"/>
+    <circle cx="28" cy="27" r="1.8" fill="white" opacity="0.6"/>
+    <circle cx="15" cy="30" r="1" fill="white" opacity="0.4"/>
+  </svg>`;
+}
+
+function renderGrid() {
+  const grid = document.getElementById("grid");
+  grid.innerHTML = "";
+  cells = [];
+  const rows = Math.round(state.length / 10) || 10;
+
+  for (let i = 0; i < state.length; i++) {
+    const cell = document.createElement("button");
+    cell.className = "cell" + (state[i] ? " popped" : "");
+    cell.dataset.idx = i;
+
+    const pw = powerUps[i];
+    cell.innerHTML = makeBubbleSVG(i, pw === "gold", pw === "rainbow");
+
+    if (pw && !state[i]) {
+      const glow = document.createElement("div");
+      glow.className = "power-glow";
+      glow.style.setProperty("--glow", pw === "rainbow" ? "#d500f9" : "gold");
+      cell.appendChild(glow);
+    }
+
+    if (!state[i]) {
+      cell.addEventListener("click", (e) => popBubble(cell, i, e));
+    }
+    grid.appendChild(cell);
+    cells.push(cell);
+  }
+}
+
+// ============================================================
+// POP LOGIC + JUICE
+// ============================================================
+function popBubble(cell, idx, evt) {
+  if (state[idx] || finished) return;
+  state[idx] = 1;
+
+  // --- COMBO MULTIPLIER ---
+  comboCount += 1;
+  if (comboTimeout) clearTimeout(comboTimeout);
+  comboTimeout = setTimeout(() => {
+    combo = 1;
+    comboCount = 0;
+    updateComboBadge();
+  }, 2000);
+
+  if (comboCount >= 3) {
+    const newCombo = Math.min(10, Math.floor(comboCount / 3) + 1);
+    if (newCombo > combo) {
+      combo = newCombo;
+      updateComboBadge(true);
+    }
+  }
+
+  // --- POWER-UP VALUE ---
+  const pw = powerUps[idx];
+  let baseValue = 1;
+  if (pw === "gold") baseValue = 5;
+  if (pw === "rainbow") baseValue = 10;
+  const earned = baseValue * combo;
+
+  // --- STATE ---
+  streak += 1;
+  sessionPops += 1;
+  totalPops += earned;
+  if (streak > bestStreak) bestStreak = streak;
+
+  // --- SOUNDS ---
+  try {
+    if (pw === "gold" || pw === "rainbow") {
+      const s = document.getElementById("powerSound");
+      s.currentTime = 0; s.play().catch(()=>{});
+    } else {
+      const p = document.getElementById("popSound");
+      p.currentTime = 0; p.play().catch(()=>{});
+    }
+    if (streak % 10 === 0) {
+      const st = document.getElementById("streakSound");
+      st.currentTime = 0; st.play().catch(()=>{});
+    }
+  } catch(e) {}
+
+  // --- FLASH HUD ---
+  document.getElementById("streak-icon").classList.toggle("streak-fire", streak % 10 === 0);
+
+  // --- POP ANIMATION ---
+  cell.classList.add("popping");
+  cell.removeEventListener("click", () => {});
+
+  // --- FLOAT SCORE ---
+  const rect = cell.getBoundingClientRect();
+  const floater = document.createElement("div");
+  floater.className = "float-score";
+  floater.textContent = `+${earned}`;
+  if (combo > 1) floater.textContent += ` (x${combo})`;
+  floater.style.left = (rect.left + rect.width / 2 - 20) + "px";
+  floater.style.top = (rect.top - 4) + "px";
+  floater.style.color = pw === "rainbow" ? "#d500f9" : pw === "gold" ? "#ff8f00" : "#ff5722";
+  document.body.appendChild(floater);
+  setTimeout(() => floater.remove(), 950);
+
+  // --- SPARKLES ---
+  spawnSparkles(rect, pw);
+
+  // --- SCREEN SHAKE for power-ups ---
+  if (pw) {
+    document.body.animate(
+      [{transform: "translate(0,0)"}, {transform: "translate(4px,-4px)"},
+       {transform: "translate(-4px,4px)"}, {transform: "translate(0,0)"}],
+      {duration: 260, easing: "ease-out"}
+    );
+  }
+
+  // --- SETTLE ANIMATION ---
+  setTimeout(() => {
+    cell.classList.remove("popping");
+    cell.classList.add("popped");
+    if (powerUps[idx]) {
+      const g = cell.querySelector(".power-glow");
+      if (g) g.remove();
+    }
+  }, 320);
+
+  updateHUD();
+  sendUpdate();
+
+  if (state.every(v => v === 1)) setTimeout(finishSheet, 400);
+}
+
+function spawnSparkles(rect, pw) {
+  const n = pw === "rainbow" ? 12 : pw === "gold" ? 8 : 4;
+  const colors = ["#ffea00", "#ff1744", "#00e676", "#00b0ff", "#d500f9"];
+  for (let i = 0; i < n; i++) {
+    const s = document.createElement("div");
+    s.className = "sparkle";
+    s.textContent = "✨";
+    s.style.left = (rect.left + rect.width / 2) + "px";
+    s.style.top = (rect.top + rect.height / 2) + "px";
+    const angle = (i / n) * Math.PI * 2;
+    s.style.setProperty("--dx", Math.cos(angle) * 60 + "px");
+    s.style.setProperty("--dy", Math.sin(angle) * 60 + "px");
+    s.style.color = colors[i % colors.length];
+    document.body.appendChild(s);
+    setTimeout(() => s.remove(), 750);
+  }
+}
+
+// ============================================================
+// COMBO BADGE
+// ============================================================
+function updateComboBadge(pulse) {
+  const badge = document.getElementById("comboBadge");
+  badge.textContent = `x${combo}`;
+  if (combo > 1) {
+    badge.classList.add("active");
+    if (pulse) {
+      badge.classList.remove("pulse");
+      void badge.offsetWidth;
+      badge.classList.add("pulse");
+    }
+  } else {
+    badge.classList.remove("active");
+  }
+}
+
+// ============================================================
+// HUD
+// ============================================================
+function updateHUD() {
+  document.getElementById("streak").textContent = streak;
+  document.getElementById("total").textContent = totalPops;
+  document.getElementById("best").textContent = bestStreak;
+}
+
+// ============================================================
+// FINISH
+// ============================================================
+function finishSheet() {
+  finished = true;
+  try {
+    const f = document.getElementById("finishSound");
+    f.currentTime = 0; f.play().catch(()=>{});
+  } catch(e) {}
+
+  const cont = document.getElementById("finish-container");
+  cont.innerHTML = `
+    <div class="finish-banner">
+      🎉 ALL POPPED! +20 🪙<br>
+      <span style="font-size:15px;font-weight:500;">
+        Best streak: ${bestStreak} | Total earned: ${totalPops}
+      </span>
+    </div>
+    <button class="btn" onclick="resetSheet()">🫧 NEW SHEET</button>
+  `;
+  sendUpdate();
+}
+
+function resetSheet() {
+  state = new Array(state.length).fill(0);
+  streak = 0;
+  sessionPops = 0;
+  finished = false;
+  combo = 1;
+  comboCount = 0;
+  updateComboBadge();
+  document.getElementById("finish-container").innerHTML = "";
+  renderGrid();
+  updateHUD();
+  sendUpdate();
+}
+
+// ============================================================
+// BRIDGE BACK TO STREAMLIT
+// ============================================================
+function sendUpdate() {
+  if (window.Streamlit && window.Streamlit.setComponentValue) {
+    window.Streamlit.setComponentValue({
+      total_pops: totalPops,
+      best_streak: bestStreak,
+      streak: streak,
+      session_pops: sessionPops,
+      state: state,
+      finished: finished,
+      combo: combo,
+    });
+  }
+}
+
+// ============================================================
+// STREAMLIT INIT
+// ============================================================
+try {
+  if (window.Streamlit) {
+    window.Streamlit.events.addEventListener(
+      window.Streamlit.RENDER_EVENT,
+      onRender
+    );
+    window.Streamlit.setComponentReady();
+    window.Streamlit.setFrameHeight(720);
+  }
+} catch(e) {
+  // Fallback for direct browser preview
+  onRender({data: {args: {rows: 10, cols: 10, state: new Array(100).fill(0)}}});
+}
+
+// Set CSS var for columns
+document.documentElement.style.setProperty("--cols", 10);
+applyTheme();
+
+// Physics micro-drift on bubbles (idle wobble)
+function idleDrift() {
+  cells.forEach((cell, i) => {
+    if (state[i]) return;
+    const svg = cell.querySelector(".bubble-svg");
+    if (!svg) return;
+    const t = performance.now() / 1000;
+    const dx = Math.sin(t * 1.2 + i * 0.7) * 0.8;
+    const dy = Math.cos(t * 1.5 + i * 1.1) * 0.8;
+    svg.style.transform = `translate(${dx}px, ${dy}px)`;
+  });
+  requestAnimationFrame(idleDrift);
+}
+requestAnimationFrame(idleDrift);
+</script>
+</body>
+</html>
